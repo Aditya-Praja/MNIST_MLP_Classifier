@@ -35,7 +35,7 @@ model = MNISTClassifier().to(device)
 
 model.load_state_dict(
     torch.load(
-        "../models/mnist_mlp.pth",
+        "../models/best_mnist_model.pth",
         map_location=device,
         weights_only=True,
     )

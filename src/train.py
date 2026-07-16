@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
 from pathlib import Path
@@ -28,6 +28,15 @@ test_dataset = datasets.MNIST(
     transform=transform,
 )
 
+training_size = 50000
+validation_size = 10000
+
+training_dataset, validation_dataset = random_split(
+    train_dataset,
+    [training_size, validation_size],
+    generator=torch.Generator().manual_seed(42),
+)
+
 
 # --------------------------------------------------
 # 2. Create DataLoaders
@@ -36,9 +45,15 @@ test_dataset = datasets.MNIST(
 batch_size = 64
 
 train_loader = DataLoader(
-    train_dataset,
+    training_dataset,
     batch_size=batch_size,
     shuffle=True,
+)
+
+validation_loader = DataLoader(
+    validation_dataset,
+    batch_size=batch_size,
+    shuffle=False,
 )
 
 test_loader = DataLoader(
@@ -84,8 +99,11 @@ optimizer = torch.optim.Adam(
 training_losses = []
 training_accuracies = []
 
-test_losses = []
-test_accuracies = []
+validation_losses = []
+validation_accuracies = []
+
+best_validation_loss = float("inf")
+best_epoch = 0
 
 
 # --------------------------------------------------
@@ -164,12 +182,12 @@ for epoch in range(num_epochs):
 
     model.eval()
 
-    total_test_loss = 0.0
-    correct_test_predictions = 0
-    total_test_examples = 0
+    total_validation_loss = 0.0
+    correct_validation_predictions = 0
+    total_validation_examples = 0
 
     with torch.no_grad():
-        for images, labels in test_loader:
+        for images, labels in validation_loader:
             images = images.to(device)
             labels = labels.to(device)
 
@@ -180,38 +198,62 @@ for epoch in range(num_epochs):
                 labels,
             )
 
-            total_test_loss += (
+            total_validation_loss += (
                 loss.item() * images.size(0)
             )
 
-            test_predictions = logits.argmax(
+            validation_predictions = logits.argmax(
                 dim=1
             )
 
-            correct_test_predictions += (
-                test_predictions == labels
+            correct_validation_predictions += (
+                validation_predictions == labels
             ).sum().item()
 
-            total_test_examples += labels.size(0)
+            total_validation_examples += labels.size(0)
 
-    average_test_loss = (
-        total_test_loss
-        / total_test_examples
+    average_validation_loss = (
+        total_validation_loss
+        / total_validation_examples
     )
 
-    test_accuracy = (
-        correct_test_predictions
-        / total_test_examples
+    validation_accuracy = (
+        correct_validation_predictions
+        / total_validation_examples
     )
 
-    test_losses.append(
-        average_test_loss
+    validation_losses.append(
+        average_validation_loss
     )
 
-    test_accuracies.append(
-        test_accuracy
+    validation_accuracies.append(
+        validation_accuracy
     )
-
+    
+    if average_validation_loss < best_validation_loss:
+        best_validation_loss = average_validation_loss
+        best_epoch = epoch
+        
+        models_directory = Path("../models")
+        models_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        
+        best_model_path = (
+            models_directory / "best_mnist_model.pth"
+        )
+        
+        torch.save(
+            model.state_dict(),
+            best_model_path,
+        )
+        
+        print(
+            f"Saved best model to epoch {best_epoch}"
+            f"with validation loss "
+            f"{best_validation_loss:.4f}"
+        )
 
     # ==========================
     # Print this epoch's results
@@ -221,8 +263,8 @@ for epoch in range(num_epochs):
         f"Epoch [{epoch + 1}/{num_epochs}] | "
         f"Train Loss: {average_training_loss:.4f} | "
         f"Train Accuracy: {training_accuracy:.4f} | "
-        f"Test Loss: {average_test_loss:.4f} | "
-        f"Test Accuracy: {test_accuracy:.4f}"
+        f"Validation Loss: {average_validation_loss:.4f} | "
+        f"Validation Accuracy: {validation_accuracy:.4f}"
     )
     
 epochs = range(1, num_epochs + 1)
@@ -238,9 +280,9 @@ plt.plot(
 
 plt.plot(
     epochs,
-    test_accuracies,
+    validation_accuracies,
     marker="o",
-    label="Test Accuracy",
+    label="Validation Accuracy",
 )
 
 plt.title("Accuracy Across Epochs")
@@ -263,9 +305,9 @@ plt.plot(
 
 plt.plot(
     epochs,
-    test_losses,
+    validation_losses,
     marker="o",
-    label="Test Loss",
+    label="Validation Loss",
 )
 
 plt.title("Loss Across Epochs")
@@ -275,6 +317,19 @@ plt.xticks(epochs)
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+plots_directory = Path("../plots")
+plots_directory.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+accuracy_plot_path = plots_directory / "accuracy_across_epochs.png"
+loss_plot_path = plots_directory / "loss_across_epochs.png"
+
+plt.savefig(accuracy_plot_path)
+plt.savefig(loss_plot_path)
+
 
 # --------------------------------------------------
 # 7. Save the trained model
