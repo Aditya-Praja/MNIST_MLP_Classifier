@@ -2,15 +2,20 @@ import torch
 import torch.nn as nn
 
 class MNISTClassifier(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout_probability=0.2):
         super().__init__()
         
         self.network = nn.Sequential(
             nn.Flatten(),
+            
             nn.Linear(28*28, 128),
             nn.ReLU(),
+            nn.Dropout(p=dropout_probability),
+
             nn.Linear(128, 64),
             nn.ReLU(),
+            nn.Dropout(p=dropout_probability),
+            
             nn.Linear(64, 10)
         )
 

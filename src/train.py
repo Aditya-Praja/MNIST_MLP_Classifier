@@ -82,7 +82,7 @@ print("Using device:", device)
 # 4. Create the model, loss function, and optimizer
 # --------------------------------------------------
 
-model = MNISTClassifier().to(device)
+model = MNISTClassifier(dropout_probability=0.2).to(device)
 
 loss_function = torch.nn.CrossEntropyLoss()
 
@@ -105,6 +105,8 @@ validation_accuracies = []
 best_validation_loss = float("inf")
 best_epoch = 0
 
+patience = 3
+epochs_without_improvement = 0
 
 # --------------------------------------------------
 # 6. Train and evaluate after every epoch
@@ -254,6 +256,15 @@ for epoch in range(num_epochs):
             f"with validation loss "
             f"{best_validation_loss:.4f}"
         )
+        
+        epochs_without_improvement = 0
+    
+    else:
+        epochs_without_improvement += 1
+        
+        print("Validation loss did not improve. "
+              f"Patience: {epochs_without_improvement}/{patience}"
+        )
 
     # ==========================
     # Print this epoch's results
@@ -267,7 +278,12 @@ for epoch in range(num_epochs):
         f"Validation Accuracy: {validation_accuracy:.4f}"
     )
     
-epochs = range(1, num_epochs + 1)
+    if epochs_without_improvement >= patience:
+        print(f"\nEarly stop triggered after epoch {epoch + 1}")
+        break
+    
+completed_epochs = len(training_losses)
+epochs = range(1, completed_epochs + 1)
 
 plt.figure(figsize=(8, 5))
 
