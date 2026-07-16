@@ -7,6 +7,50 @@ import matplotlib.pyplot as plt
 
 from model import MNISTClassifier
 
+import argparse
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Train a Multi-Layer Perceptron (MLP) model on the MNIST dataset."
+    )
+    
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=20,
+        help="Maximum number of epochs for training (default: 20).",
+    )
+    
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=64,
+        help="Batch size for training and evaluation (default: 64).",
+    )
+    
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.001,
+        help="Learning rate for the optimizer (default: 0.001).",
+    )
+    
+    parser.add_argument(
+        "--dropout_probability",
+        type=float,
+        default=0.2,
+        help="Dropout probability for the MLP model (default: 0.2).",
+    )
+    
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=3,
+        help="Number of epochs to wait for improvement before early stopping (default: 3).",
+    )  
+    
+    return parser.parse_args()
+
 def train_one_epoch(
     model,
     data_loader,
@@ -148,15 +192,57 @@ def save_training_plot(
     print(f"Saved accuracy plot to {accuracy_path}")
     print(f"Saved loss plot to {loss_path}")
 
-
-
-def main():
+def load_checkpoint(
+    checkpoint_path,
+    model,
+    optimizer,
+    device,
+):
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location=device,
+        weights_only=True,
+    )
     
-    batch_size = 64
-    learning_rate = 0.001
-    dropout_probability = 0.2
-    num_epochs = 20
-    patience = 3
+    model.load_state_dict(checkpoint["model_state_dict"])
+    
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    
+    return checkpoint
+
+def main(args):
+    
+    batch_size = args.batch_size
+    learning_rate = args.learning_rate
+    dropout_probability = args.dropout_probability
+    num_epochs = args.epochs
+    patience = args.patience
+    
+    print("\nTraining configuration")
+    print("----------------------")
+    print(f"Epochs: {num_epochs}")
+    print(f"Batch size: {batch_size}")
+    print(f"Learning rate: {learning_rate}")
+    print(f"Dropout: {dropout_probability}")
+    print(f"Patience: {patience}")
+    
+    if num_epochs <= 0:
+        raise ValueError("--epochs must be greater than 0.")
+
+    if batch_size <= 0:
+        raise ValueError("--batch-size must be greater than 0.")
+
+    if learning_rate <= 0:
+        raise ValueError("--learning-rate must be greater than 0.")
+
+    if not 0.0 <= dropout_probability < 1.0:
+        raise ValueError(
+            "--dropout must be greater than or equal to 0 "
+            "and less than 1."
+        )
+
+    if patience <= 0:
+        raise ValueError("--patience must be greater than 0.")
     
     data_directory = Path("../data")
     models_directory = Path("../models")
@@ -295,8 +381,22 @@ def main():
             best_epoch = epoch + 1
             epochs_without_improvement = 0
             
+            checkpoint = {
+                "epoch": best_epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "best_validation_loss": best_validation_loss,
+                "training_losses": training_losses,
+                "training_accuracies": training_accuracies,
+                "validation_losses": validation_losses,
+                "validation_accuracies": validation_accuracies,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "dropout_probability": dropout_probability,
+            }
+            
             torch.save(
-                model.state_dict(),
+                checkpoint,
                 best_model_path,
             )
             
@@ -325,13 +425,15 @@ def main():
         plots_directory,
     )
     
-    model.load_state_dict(
-        torch.load(
-            best_model_path,
-            map_location=device,
-            weights_only=True,
-        )
+    checkpoint = load_checkpoint(
+        best_model_path,
+        model,
+        optimizer,
+        device,
     )
+    
+    print(f"Loaded checkpoint from epoch {checkpoint['epoch']} "
+          f"with validation loss {checkpoint['best_validation_loss']:.4f}")
 
     test_loss, test_accuracy = evaluate(
         model=model,
@@ -352,4 +454,5 @@ def main():
     )
     
 if __name__ == "__main__":
-    main()
+    arguments = parse_arguments()
+    main(arguments)
